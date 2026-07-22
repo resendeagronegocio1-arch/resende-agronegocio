@@ -4934,7 +4934,7 @@ function gerarFechContrato(){
   // Lucro Parcial — só embarques com recebimento confirmado
   const itsRecebidos=its.filter(d=>d.recebido>0);
   const lucro_parcial=itsRecebidos.reduce((s,d)=>s+(d.lucro||0),0);
-  const total_venda_recebido=itsRecebidos.reduce((s,d)=>s+(d.total_venda||0),0);
+  const total_venda_recebido=itsRecebidos.reduce((s,d)=>s+(d.recebido||0),0);
   const lucro_parcial_pct=total_venda_recebido>0?lucro_parcial/total_venda_recebido*100:0;
   const qtd_recebidos=itsRecebidos.length;
   const qtd_total=its.length;
