@@ -3623,7 +3623,7 @@ function renderARecParceiros(){
       <td><span class="badge ${l.tipo==='entrada'?'badge-green':'badge-red'}">${l.tipo==='entrada'?'Aporte':'Devolução'}</span></td>
       <td><strong>${l.parceiro||'—'}</strong></td>
       <td>${l.descricao||'—'}</td>
-      <td class="mono ${l.tipo==='entrada'?'pos':'neg'}">${fmt(l.valor||0)}</td>
+      <td class="mono ${l.tipo==='entrada'?'pos':'neg'}">${l.tipo==='saida'?'- ':''}${fmt(l.valor||0)}</td>
       <td style="display:flex;gap:4px">
         <button class="btn btn-secondary btn-sm" onclick="event.stopPropagation();editarFluxo('${l.id}')">✏</button>
         <button class="btn btn-danger" onclick="event.stopPropagation();delFluxo('${l.id}')">×</button>
@@ -3670,31 +3670,49 @@ function exportARecParc(tipo){
     doc.setFontSize(8);
     doc.text(`Empresa: ${emp||'Todas'} | Emitido em: ${hoje}`,36,23);
     doc.setTextColor(0,0,0);
-    const rows=linhas.map(l=>[fmtData(l.data),l.tipo==='entrada'?'Aporte':'Devolução',l.parceiro,l.descricao||'—',fmt(l.valor||0)]);
+    const rows=linhas.map(l=>[fmtData(l.data),l.tipo==='entrada'?'Aporte':'Devolução',l.parceiro,l.descricao||'—',(l.tipo==='saida'?'- ':'')+fmt(l.valor||0)]);
     doc.autoTable({
       head:[cab],body:rows,startY:32,
       styles:{fontSize:8,cellPadding:2},
       headStyles:{fillColor:[45,106,79],textColor:255,fontStyle:'bold'},
       alternateRowStyles:{fillColor:[240,250,242]},
       columnStyles:{0:{cellWidth:22},1:{cellWidth:22},4:{cellWidth:32,halign:'right'}},
-      margin:{left:14,right:14}
+      margin:{left:14,right:14},
+      didParseCell:function(data){
+        if(data.section==='body'&&data.column.index===4){
+          const l=linhas[data.row.index];
+          if(l&&l.tipo==='saida')data.cell.styles.textColor=[200,40,40];
+        }
+      }
     });
     const totalAportes=linhas.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+(l.valor||0),0);
     const totalDevolucoes=linhas.filter(l=>l.tipo==='saida').reduce((s,l)=>s+(l.valor||0),0);
     const saldo=totalAportes-totalDevolucoes;
     let y=doc.lastAutoTable.finalY+8;
-    doc.setFontSize(10);doc.setFont('helvetica','bold');
-    doc.setTextColor(45,106,79);
-    doc.text(`Total Aportes: ${fmt(totalAportes)}`,pw-14,y,{align:'right'});y+=6;
-    doc.setTextColor(200,40,40);
-    doc.text(`Total Devoluções: -${fmt(totalDevolucoes)}`,pw-14,y,{align:'right'});y+=7;
-    doc.setFontSize(12);
-    doc.setTextColor(saldo>=0?45:200,saldo>=0?106:40,saldo>=0?79:40);
-    doc.text(`SALDO: ${fmt(saldo)}`,pw-14,y,{align:'right'});
+    const boxH=34,boxW=pw-28,boxX=14;
+    const ph=doc.internal.pageSize.height;
+    if(y+boxH>ph-10){doc.addPage();y=20;}
+    doc.setFillColor(31,61,20);
+    doc.roundedRect(boxX,y,boxW,boxH,3,3,'F');
+    let ly=y+10;
+    doc.setFontSize(11);doc.setFont('helvetica','bold');
+    doc.setTextColor(255,255,255);
+    doc.text('Total Aportes',boxX+10,ly);
+    doc.text(fmt(totalAportes),boxX+boxW-10,ly,{align:'right'});
+    ly+=10;
+    doc.text('Total Devoluções',boxX+10,ly);
+    doc.setTextColor(255,138,138);
+    doc.text(`- ${fmt(totalDevolucoes)}`,boxX+boxW-10,ly,{align:'right'});
+    ly+=10;
+    doc.setDrawColor(255,255,255);doc.setLineWidth(0.2);
+    doc.line(boxX+10,ly-6,boxX+boxW-10,ly-6);
+    doc.setTextColor(255,255,255);doc.setFontSize(12);
+    doc.text('SALDO',boxX+10,ly);
+    doc.text(fmt(saldo),boxX+boxW-10,ly,{align:'right'});
     doc.setTextColor(0,0,0);
     doc.save('resende-agronegocio-arec-parceiros.pdf');toast('PDF exportado!');
   }else{
-    const rows=linhas.map(l=>[l.data,l.tipo==='entrada'?'Aporte':'Devolução',l.parceiro,l.descricao,l.valor]);
+    const rows=linhas.map(l=>[l.data,l.tipo==='entrada'?'Aporte':'Devolução',l.parceiro,l.descricao,l.tipo==='saida'?-(l.valor||0):l.valor]);
     gerarCSV(cab,rows,'arec-parceiros');
   }
 }
