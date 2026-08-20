@@ -1053,6 +1053,7 @@ tr.row-pago td{background:rgba(40,167,69,0.07)}
         <div style="display:flex;gap:6px">
           <div id="ms-arec-parc" style="display:inline-block"></div>
           <button class="btn btn-secondary btn-sm" onclick="exportARecParc('csv')">⬇ Excel</button>
+          <button class="btn btn-secondary btn-sm" onclick="exportARecParc('pdf')">⬇ PDF</button>
         </div>
       </div>
       <div class="tbl-wrap"><table><thead><tr>
@@ -3641,9 +3642,46 @@ function limparARecParceiro(){
 function exportARecParc(tipo){
   const emp=_empresaFiltro;
   const cab=['Data','Tipo','Parceiro','Descrição','Valor R$'];
-  const rows=fluxo.filter(l=>(l.categoria==='parceiro'||(!l.categoria&&l.parceiro&&l.parceiro.toUpperCase()!=='BANCO'&&l.parceiro!=='Escritório'))&&(!emp||l.empresa===emp))
-    .map(l=>[l.data,l.tipo==='entrada'?'Aporte':'Devolução',l.parceiro,l.descricao,l.valor]);
-  gerarCSV(cab,rows,'arec-parceiros');
+  const linhas=fluxo.filter(l=>(l.categoria==='parceiro'||(!l.categoria&&l.parceiro&&l.parceiro.toUpperCase()!=='BANCO'&&l.parceiro!=='Escritório'))&&(!emp||l.empresa===emp))
+    .sort((a,b)=>b.data>a.data?1:-1);
+  if(tipo==='pdf'){
+    if(!window.jspdf||!window.jspdf.jsPDF){toast('Biblioteca PDF não carregada.',true);return;}
+    const {jsPDF}=window.jspdf;
+    const doc=new jsPDF();
+    const pw=doc.internal.pageSize.width;
+    const hoje=new Date().toLocaleDateString('pt-BR');
+    doc.setFillColor(45,106,79);doc.rect(0,0,pw,26,'F');
+    try{doc.addImage(_LOGO_PDF,'PNG',14,3,18,18);}catch(e){}
+    doc.setTextColor(255,255,255);doc.setFontSize(14);doc.setFont('helvetica','bold');
+    doc.text('Resende Agronegócio',36,11);
+    doc.setFontSize(10);doc.setFont('helvetica','normal');
+    doc.text('A Receber — Parceiros',36,18);
+    doc.setFontSize(8);
+    doc.text(`Empresa: ${emp||'Todas'} | Emitido em: ${hoje}`,36,23);
+    doc.setTextColor(0,0,0);
+    const rows=linhas.map(l=>[fmtData(l.data),l.tipo==='entrada'?'Aporte':'Devolução',l.parceiro,l.descricao||'—',fmt(l.valor||0)]);
+    doc.autoTable({
+      head:[cab],body:rows,startY:32,
+      styles:{fontSize:8,cellPadding:2},
+      headStyles:{fillColor:[45,106,79],textColor:255,fontStyle:'bold'},
+      alternateRowStyles:{fillColor:[240,250,242]},
+      columnStyles:{4:{halign:'right'}},
+      margin:{left:14,right:14}
+    });
+    const totalAportes=linhas.filter(l=>l.tipo==='entrada').reduce((s,l)=>s+(l.valor||0),0);
+    const totalDevolucoes=linhas.filter(l=>l.tipo==='saida').reduce((s,l)=>s+(l.valor||0),0);
+    const saldo=totalAportes-totalDevolucoes;
+    let y=doc.lastAutoTable.finalY+8;
+    doc.setFontSize(10);doc.setFont('helvetica','bold');
+    doc.text(`Total Aportes: ${fmt(totalAportes)}`,pw-14,y,{align:'right'});y+=6;
+    doc.text(`Total Devoluções: -${fmt(totalDevolucoes)}`,pw-14,y,{align:'right'});y+=6;
+    doc.setFontSize(12);
+    doc.text(`SALDO: ${fmt(saldo)}`,pw-14,y,{align:'right'});
+    doc.save('resende-agronegocio-arec-parceiros.pdf');toast('PDF exportado!');
+  }else{
+    const rows=linhas.map(l=>[l.data,l.tipo==='entrada'?'Aporte':'Devolução',l.parceiro,l.descricao,l.valor]);
+    gerarCSV(cab,rows,'arec-parceiros');
+  }
 }
 
 // ===== DESPESAS =====
@@ -5149,7 +5187,7 @@ function gerarFechamento(){
     const vencido=its.filter(d=>{if(d.recebido&&d.recebido>0)return false;if(!d.descarga)return false;const p=prazoData(d.descarga,ph);return hoje>p&&!d.data_rec;}).reduce((s,d)=>s+(d.total_venda||0),0);
     const qtd_contrato=(co&&co.qtd)||0;
     const sc_faltantes=Math.max(0,qtd_contrato-sc_emb);
-    return{ct,empresa:(co&&co.empresa)||'Resende Agronegócio',comprador:(co&&co.comprador)||'—',produto:(co&&co.produto)||'—',qtd:its.length,sc_emb,sc_ent,sc_faltantes,total_venda,recebido,a_receber,a_receber_liq,fundo_valor,tem_fundo:!!(co&&co.tem_fundo),vencido};
+    return{ct,empresa:(co&&co.empresa)||'Resende Agronegócio',comprador:(co&&co.comprador)||'—',produto:(co&&co.produto)||'—',qtd:its.length,qtd_contrato,sc_emb,sc_ent,sc_faltantes,total_venda,recebido,a_receber,a_receber_liq,fundo_valor,tem_fundo:!!(co&&co.tem_fundo),vencido};
   });
   const tV=_fech.reduce((s,r)=>s+r.total_venda,0),tR=_fech.reduce((s,r)=>s+r.recebido,0);
   const tA=_fech.reduce((s,r)=>s+r.a_receber,0),tVe=_fech.reduce((s,r)=>s+r.vencido,0);
@@ -5157,6 +5195,7 @@ function gerarFechamento(){
   const tF=_fech.reduce((s,r)=>s+r.fundo_valor,0);
   const tSe=_fech.reduce((s,r)=>s+r.sc_emb,0),tSn=_fech.reduce((s,r)=>s+r.sc_ent,0);
   const tSf=_fech.reduce((s,r)=>s+r.sc_faltantes,0);
+  const tQc=_fech.reduce((s,r)=>s+(r.qtd_contrato||0),0);
   document.getElementById('fech-cards').innerHTML=`
     <div class="stat-card"><div class="s-label">Total de vendas</div><div class="s-value">${fmt(tV)}</div></div>
     <div class="stat-card green"><div class="s-label">Total recebido</div><div class="s-value">${fmt(tR)}</div></div>
@@ -5166,7 +5205,7 @@ function gerarFechamento(){
     <div class="stat-card ${tVe>0?'red':'green'}"><div class="s-label">Saldo vencido</div><div class="s-value">${fmt(tVe)}</div></div>
     <div class="stat-card"><div class="s-label">Sc embarcadas</div><div class="s-value">${fmtN(tSe,0)}</div></div>
     <div class="stat-card"><div class="s-label">Sc entregues</div><div class="s-value">${fmtN(tSn,0)}</div></div>
-    <div class="stat-card ${tSf>0?'amber':'green'}"><div class="s-label">Sc faltantes</div><div class="s-value">${fmtN(tSf,0)}</div></div>
+    <div class="stat-card ${tSf>0?'amber':'green'}"><div class="s-label">Sc faltantes p/ embarcar</div><div class="s-value">${fmtN(tSf,0)}</div><div class="s-sub">de ${fmtN(tQc,0)} sc contratadas</div></div>
   `;
   // Notas com recebimento pendente — TODAS sem recebimento dos contratos selecionados
   const selStr=sel.map(s=>String(s).trim());
